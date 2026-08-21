@@ -17,7 +17,7 @@ from fastmcp import FastMCP
 # ---------------------------------------------------------------------------
 # 1. Create the server
 # ---------------------------------------------------------------------------
-mcp = FastMCP("Location Toolkit")
+mcp = FastMCP("Location Toolkit", stateless_http=True, json_response=True)
 
 # ---------------------------------------------------------------------------
 # 2. Read the Google Maps API key from the "slot" (environment variable).
