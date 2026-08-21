@@ -17,7 +17,7 @@ from fastmcp import FastMCP
 # ---------------------------------------------------------------------------
 # 1. Create the server
 # ---------------------------------------------------------------------------
-mcp = FastMCP("Location Toolkit", stateless_http=True, json_response=True)
+mcp = FastMCP("Location Toolkit")
 
 # ---------------------------------------------------------------------------
 # 2. Read the Google Maps API key from the "slot" (environment variable).
@@ -87,4 +87,4 @@ def travel_time(origin: str, destination: str) -> dict:
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=port, stateless_http=True, json_response=True)
