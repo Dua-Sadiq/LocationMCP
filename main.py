@@ -138,6 +138,104 @@ def find_nearest(target: str, candidates: list[str]) -> dict:
         return {"error": "Google's response was not in the expected shape."}
 
 
+@mcp.tool
+def verify_address(address: str) -> dict:
+    """Verify an address and return Google's cleaned, standardized version.
+
+    Use this to check whether an address is real and findable, which is
+    useful for checking delivery addresses, cleaning customer data during
+    onboarding, or confirming a job site before dispatch.
+
+    address: the address to verify.
+    """
+    if not address or not address.strip():
+        return {"error": "An address is required."}
+
+    if not GOOGLE_MAPS_KEY:
+        return {"error": "No Google Maps API key is configured on this server."}
+
+    url = "https://maps.googleapis.com/maps/api/geocode/json"
+    params = {
+        "address": address,
+        "key": GOOGLE_MAPS_KEY,
+    }
+
+    try:
+        response = httpx.get(url, params=params, timeout=15)
+        data = response.json()
+    except Exception as e:
+        return {"error": f"Could not reach Google Maps: {e}"}
+
+    try:
+        if data.get("status") == "ZERO_RESULTS" or not data["results"]:
+            return {
+                "valid": False,
+                "message": "The address could not be found.",
+            }
+
+        result = data["results"][0]
+        location = result["geometry"]["location"]
+        return {
+            "valid": True,
+            "formatted_address": result["formatted_address"],
+            "latitude": location["lat"],
+            "longitude": location["lng"],
+        }
+    except (KeyError, IndexError, TypeError):
+        return {"error": "Google's response was not in the expected shape."}
+
+
+@mcp.tool
+def route_with_traffic(origin: str, destination: str) -> dict:
+    """Get the live, traffic-aware driving time between two places.
+
+    This reflects current road conditions right now, unlike a normal
+    driving estimate. Use it for realistic dispatch and delivery timing.
+
+    origin: the starting place (an address or place name).
+    destination: the ending place (an address or place name).
+    """
+    if not origin or not origin.strip() or not destination or not destination.strip():
+        return {"error": "Both origin and destination are required."}
+
+    if not GOOGLE_MAPS_KEY:
+        return {"error": "No Google Maps API key is configured on this server."}
+
+    url = "https://maps.googleapis.com/maps/api/directions/json"
+    params = {
+        "origin": origin,
+        "destination": destination,
+        "mode": "driving",
+        "departure_time": "now",
+        "traffic_model": "best_guess",
+        "key": GOOGLE_MAPS_KEY,
+    }
+
+    try:
+        response = httpx.get(url, params=params, timeout=15)
+        data = response.json()
+    except Exception as e:
+        return {"error": f"Could not reach Google Maps: {e}"}
+
+    try:
+        if data["status"] != "OK" or not data["routes"]:
+            return {"error": f"No route found ({data['status']})."}
+
+        leg = data["routes"][0]["legs"][0]
+        traffic_duration = leg.get("duration_in_traffic")
+        return {
+            "origin": origin,
+            "destination": destination,
+            "distance": leg["distance"]["text"],
+            "normal_duration": leg["duration"]["text"],
+            "traffic_aware_duration": (
+                traffic_duration["text"] if traffic_duration else None
+            ),
+        }
+    except (KeyError, IndexError, TypeError):
+        return {"error": "Google's response was not in the expected shape."}
+
+
 # ---------------------------------------------------------------------------
 # 4. Start the server so it can be reached over the internet.
 #    >>> host "0.0.0.0" means "accept connections from outside" (required
