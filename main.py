@@ -78,6 +78,66 @@ def travel_time(origin: str, destination: str) -> dict:
         return {"error": "Google's response was not in the expected shape."}
 
 
+@mcp.tool
+def find_nearest(target: str, candidates: list[str]) -> dict:
+    """Find the closest candidate to a target by driving time.
+
+    Use this when finding the nearest driver, branch, or technician to a
+    pickup location or job site. The target is the place being served, and
+    candidates are the places that could serve it.
+
+    target: the pickup location or job site (an address or place name).
+    candidates: a list of possible locations (addresses or place names).
+    """
+    if not GOOGLE_MAPS_KEY:
+        return {"error": "No Google Maps API key is configured on this server."}
+
+    if not candidates:
+        return {"error": "At least one candidate location is required."}
+
+    url = "https://maps.googleapis.com/maps/api/distancematrix/json"
+    params = {
+        "origins": target,
+        "destinations": "|".join(candidates),
+        "mode": "driving",
+        "key": GOOGLE_MAPS_KEY,
+    }
+
+    try:
+        response = httpx.get(url, params=params, timeout=15)
+        data = response.json()
+    except Exception as e:
+        return {"error": f"Could not reach Google Maps: {e}"}
+
+    try:
+        elements = data["rows"][0]["elements"]
+        ranked = []
+        for candidate, element in zip(candidates, elements):
+            if element.get("status") != "OK":
+                continue
+            ranked.append({
+                "candidate": candidate,
+                "distance": element["distance"]["text"],
+                "drive_time": element["duration"]["text"],
+                "drive_time_seconds": element["duration"]["value"],
+            })
+
+        if not ranked:
+            return {"error": "None of the candidate locations are reachable."}
+
+        ranked.sort(key=lambda result: result["drive_time_seconds"])
+        for result in ranked:
+            result.pop("drive_time_seconds")
+
+        return {
+            "target": target,
+            "nearest": ranked[0],
+            "ranked_candidates": ranked,
+        }
+    except (KeyError, IndexError, TypeError):
+        return {"error": "Google's response was not in the expected shape."}
+
+
 # ---------------------------------------------------------------------------
 # 4. Start the server so it can be reached over the internet.
 #    >>> host "0.0.0.0" means "accept connections from outside" (required
