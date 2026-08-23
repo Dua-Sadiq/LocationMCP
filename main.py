@@ -186,25 +186,35 @@ def verify_address(address: str) -> dict:
 
 
 @mcp.tool
-def route_with_traffic(origin: str, destination: str) -> dict:
-    """Get the live, traffic-aware driving time between two places.
+def best_technician(job_location: str, technicians: list[dict]) -> dict:
+    """Find the active technician who can reach a job fastest in current traffic.
 
-    This reflects current road conditions right now, unlike a normal
-    driving estimate. Use it for realistic dispatch and delivery timing.
+    Use this dispatch tool to choose the fastest active technician for a job
+    location while accounting for current traffic conditions.
 
-    origin: the starting place (an address or place name).
-    destination: the ending place (an address or place name).
+    job_location: the job site or destination (an address or place name).
+    technicians: a list of dictionaries with name, location, and status.
     """
-    if not origin or not origin.strip() or not destination or not destination.strip():
-        return {"error": "Both origin and destination are required."}
-
     if not GOOGLE_MAPS_KEY:
         return {"error": "No Google Maps API key is configured on this server."}
 
-    url = "https://maps.googleapis.com/maps/api/directions/json"
+    if not technicians:
+        return {"error": "At least one technician is required."}
+
+    active_technicians = [
+        technician
+        for technician in technicians
+        if technician.get("status", "").lower() == "active"
+    ]
+    if not active_technicians:
+        return {"error": "No active technicians are available."}
+
+    url = "https://maps.googleapis.com/maps/api/distancematrix/json"
     params = {
-        "origin": origin,
-        "destination": destination,
+        "origins": job_location,
+        "destinations": "|".join(
+            technician["location"] for technician in active_technicians
+        ),
         "mode": "driving",
         "departure_time": "now",
         "traffic_model": "best_guess",
@@ -218,19 +228,34 @@ def route_with_traffic(origin: str, destination: str) -> dict:
         return {"error": f"Could not reach Google Maps: {e}"}
 
     try:
-        if data["status"] != "OK" or not data["routes"]:
-            return {"error": f"No route found ({data['status']})."}
+        if data["status"] != "OK":
+            return {"error": f"No routes found ({data['status']})."}
 
-        leg = data["routes"][0]["legs"][0]
-        traffic_duration = leg.get("duration_in_traffic")
+        elements = data["rows"][0]["elements"]
+        ranked = []
+        for technician, element in zip(active_technicians, elements):
+            if element.get("status") != "OK":
+                continue
+            duration = element.get("duration_in_traffic", element.get("duration"))
+            ranked.append({
+                "name": technician["name"],
+                "location": technician["location"],
+                "traffic_aware_eta": duration["text"],
+                "distance": element["distance"]["text"],
+                "duration_seconds": duration["value"],
+            })
+
+        if not ranked:
+            return {"error": "None of the active technicians could be routed."}
+
+        ranked.sort(key=lambda technician: technician["duration_seconds"])
+        for technician in ranked:
+            technician.pop("duration_seconds")
+
         return {
-            "origin": origin,
-            "destination": destination,
-            "distance": leg["distance"]["text"],
-            "normal_duration": leg["duration"]["text"],
-            "traffic_aware_duration": (
-                traffic_duration["text"] if traffic_duration else None
-            ),
+            "job_location": job_location,
+            "best_technician": ranked[0],
+            "ranked_technicians": ranked,
         }
     except (KeyError, IndexError, TypeError):
         return {"error": "Google's response was not in the expected shape."}
