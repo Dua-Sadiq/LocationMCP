@@ -186,34 +186,34 @@ def verify_address(address: str) -> dict:
 
 
 @mcp.tool
-def best_technician(job_location: str, technicians: list[dict]) -> dict:
-    """Find the active technician who can reach a job fastest in current traffic.
+def nearest_available(target_location: str, resources: list[dict]) -> dict:
+    """Find the available resource who can reach a target location fastest in current traffic.
 
-    Use this dispatch tool to choose the fastest active technician for a job
-    location while accounting for current traffic conditions.
+    Use this dispatch tool to choose the fastest available driver, technician,
+    rep, or vehicle for a target location while accounting for current traffic.
 
-    job_location: the job site or destination (an address or place name).
-    technicians: a list of dictionaries with name, location, and status.
+    target_location: the destination (an address or place name).
+    resources: a list of dictionaries with name, location, and status.
     """
     if not GOOGLE_MAPS_KEY:
         return {"error": "No Google Maps API key is configured on this server."}
 
-    if not technicians:
-        return {"error": "At least one technician is required."}
+    if not resources:
+        return {"error": "At least one resource is required."}
 
-    active_technicians = [
-        technician
-        for technician in technicians
-        if technician.get("status", "").lower() == "active"
+    available_resources = [
+        resource
+        for resource in resources
+        if resource.get("status", "").lower() == "available"
     ]
-    if not active_technicians:
-        return {"error": "No active technicians are available."}
+    if not available_resources:
+        return {"error": "No available resources were found."}
 
     url = "https://maps.googleapis.com/maps/api/distancematrix/json"
     params = {
-        "origins": job_location,
+        "origins": target_location,
         "destinations": "|".join(
-            technician["location"] for technician in active_technicians
+            resource["location"] for resource in available_resources
         ),
         "mode": "driving",
         "departure_time": "now",
@@ -233,29 +233,29 @@ def best_technician(job_location: str, technicians: list[dict]) -> dict:
 
         elements = data["rows"][0]["elements"]
         ranked = []
-        for technician, element in zip(active_technicians, elements):
+        for resource, element in zip(available_resources, elements):
             if element.get("status") != "OK":
                 continue
             duration = element.get("duration_in_traffic", element.get("duration"))
             ranked.append({
-                "name": technician["name"],
-                "location": technician["location"],
+                "name": resource["name"],
+                "location": resource["location"],
                 "traffic_aware_eta": duration["text"],
                 "distance": element["distance"]["text"],
                 "duration_seconds": duration["value"],
             })
 
         if not ranked:
-            return {"error": "None of the active technicians could be routed."}
+            return {"error": "None of the available resources could be routed."}
 
-        ranked.sort(key=lambda technician: technician["duration_seconds"])
-        for technician in ranked:
-            technician.pop("duration_seconds")
+        ranked.sort(key=lambda resource: resource["duration_seconds"])
+        for resource in ranked:
+            resource.pop("duration_seconds")
 
         return {
-            "job_location": job_location,
-            "best_technician": ranked[0],
-            "ranked_technicians": ranked,
+            "target_location": target_location,
+            "best": ranked[0],
+            "all_ranked": ranked,
         }
     except (KeyError, IndexError, TypeError):
         return {"error": "Google's response was not in the expected shape."}
