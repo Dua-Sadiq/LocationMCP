@@ -68,6 +68,3 @@ Once deployed and reachable over HTTP, register this server as a custom tool/con
 - Every tool fails gracefully with a descriptive `{"error": ...}` response rather than raising, so a bad address or an unreachable API doesn't take down the agent conversation.
 - This is an early-stage project — `travel_time` was the first tool built to prove the end-to-end setup works, with the dispatch-oriented tools added on top.
 
-## License
-
-No license specified yet all rights reserved by default until one is added.
